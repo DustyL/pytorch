@@ -25,7 +25,21 @@ set(CUSPARSELT_INCLUDE_DIR $ENV{CUSPARSELT_INCLUDE_DIR} CACHE PATH "Folder conta
 
 find_path(CUSPARSELT_INCLUDE_PATH cusparseLt.h
   HINTS ${CUSPARSELT_INCLUDE_DIR}
-  PATH_SUFFIXES cuda/include cuda include)
+  PATH_SUFFIXES
+    # CUDA Toolkit layout
+    cuda/include cuda include
+    # Debian/Ubuntu packaging layout (e.g. /usr/include/libcusparseLt/13/cusparseLt.h)
+    libcusparseLt/13)
+
+# Ubuntu/Debian packaging may also expose a compatibility header at /usr/include/cusparseLt.h.
+# If CMake resolves the include path as /usr/include, this can propagate as
+# `-isystem /usr/include` and break libstdc++ `#include_next` resolution.
+# Prefer the versioned include directory when present.
+if(CUSPARSELT_INCLUDE_PATH STREQUAL "/usr/include")
+  if(EXISTS "/usr/include/libcusparseLt/13/cusparseLt.h")
+    set(CUSPARSELT_INCLUDE_PATH "/usr/include/libcusparseLt/13" CACHE PATH "Folder containing NVIDIA cuSPARSELt header files" FORCE)
+  endif()
+endif()
 
 set(CUSPARSELT_LIBRARY $ENV{CUSPARSELT_LIBRARY} CACHE PATH "Path to the cusparselt library file (e.g., libcusparseLt.so)")
 

@@ -25,7 +25,23 @@ set(CUDSS_INCLUDE_DIR $ENV{CUDSS_INCLUDE_DIR} CACHE PATH "Folder containing NVID
 
 find_path(CUDSS_INCLUDE_PATH cudss.h
   HINTS ${CUDSS_INCLUDE_DIR}
-  PATH_SUFFIXES cuda/include cuda include)
+  PATH_SUFFIXES
+    # CUDA Toolkit layout
+    cuda/include cuda include
+    # Debian/Ubuntu packaging layout (e.g. /usr/include/libcudss/13/cudss.h)
+    libcudss/13 libcudss/12)
+
+# Ubuntu/Debian packaging may also expose a compatibility header at /usr/include/cudss.h.
+# If CMake resolves the include path as /usr/include, this can propagate as
+# `-isystem /usr/include` and break libstdc++ `#include_next` resolution.
+# Prefer the versioned include directory when present.
+if(CUDSS_INCLUDE_PATH STREQUAL "/usr/include")
+  if(EXISTS "/usr/include/libcudss/13/cudss.h")
+    set(CUDSS_INCLUDE_PATH "/usr/include/libcudss/13" CACHE PATH "Folder containing NVIDIA CUDSS header files" FORCE)
+  elseif(EXISTS "/usr/include/libcudss/12/cudss.h")
+    set(CUDSS_INCLUDE_PATH "/usr/include/libcudss/12" CACHE PATH "Folder containing NVIDIA CUDSS header files" FORCE)
+  endif()
+endif()
 
 set(CUDSS_LIBRARY $ENV{CUDSS_LIBRARY} CACHE PATH "Path to the CUDSS library file (e.g., libcudss.so)")
 
