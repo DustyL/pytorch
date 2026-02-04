@@ -315,6 +315,14 @@ if [[ "${TEST_CONFIG}" == "legacy_nvidia_driver" ]]; then
   export USE_LEGACY_DRIVER=1
 fi
 
+test_python_cuda_uvm() {
+  # Test CUDA UVM (Unified Virtual Memory) support
+  export PYTORCH_CUDA_ALLOC_CONF='use_uvm:True'
+  time python test/test_cuda.py TestCuda.test_uvm_over_subscription
+  unset PYTORCH_CUDA_ALLOC_CONF
+  assert_git_not_dirty
+}
+
 test_python_legacy_jit() {
   time python test/run_test.py --include test_jit_legacy test_jit_fuser_legacy --verbose
   assert_git_not_dirty

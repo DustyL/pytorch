@@ -15,6 +15,13 @@ enum class Expandable_Segments_Handle_Type : int {
   FABRIC_HANDLE = 2,
 };
 
+// UVM (Unified Virtual Memory) access patterns for GH200 and similar systems
+enum class UVMAccessPattern {
+  GPU_FIRST,  // Prefer GPU memory, fallback to CPU (recommended)
+  BALANCED,   // No preference, let driver decide
+  CPU_FIRST   // Prefer CPU memory, migrate as needed
+};
+
 // Environment config parser
 class C10_CUDA_API CUDAAllocatorConfig {
  public:
@@ -63,6 +70,23 @@ class C10_CUDA_API CUDAAllocatorConfig {
 
   static double per_process_memory_fraction() {
     return instance().m_per_process_memory_fraction;
+  }
+
+  /** UVM (Unified Virtual Memory) settings for GH200 and similar systems */
+  static bool use_uvm() {
+    return instance().m_use_uvm;
+  }
+
+  static double uvm_oversubscription_ratio() {
+    return instance().m_uvm_oversubscription_ratio;
+  }
+
+  static UVMAccessPattern uvm_access_pattern() {
+    return instance().m_uvm_access_pattern;
+  }
+
+  static double uvm_stage1_threshold() {
+    return instance().m_uvm_stage1_threshold;
   }
 
   /** Pinned memory allocator settings */
@@ -157,7 +181,11 @@ class C10_CUDA_API CUDAAllocatorConfig {
         "graph_capture_record_stream_reuse",
         "pinned_reserve_segment_size_mb",
         "pinned_num_register_threads",
-        "per_process_memory_fraction"};
+        "per_process_memory_fraction",
+        "use_uvm",
+        "uvm_oversubscription_ratio",
+        "uvm_access_pattern",
+        "uvm_stage1_threshold"};
     return keys;
   }
 
@@ -185,6 +213,18 @@ class C10_CUDA_API CUDAAllocatorConfig {
   double parsePerProcessMemoryFraction(
       const c10::CachingAllocator::ConfigTokenizer& tokenizer,
       size_t i);
+  size_t parseUseUvm(
+      const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+      size_t i);
+  size_t parseUvmOversubscriptionRatio(
+      const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+      size_t i);
+  size_t parseUvmAccessPattern(
+      const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+      size_t i);
+  size_t parseUvmStage1Threshold(
+      const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+      size_t i);
 
   std::atomic<size_t> m_pinned_num_register_threads{1};
   std::atomic<size_t> m_pinned_reserve_segment_size_mb{0};
@@ -198,6 +238,12 @@ class C10_CUDA_API CUDAAllocatorConfig {
   std::atomic<bool> m_pinned_use_cuda_host_register{false};
   std::atomic<bool> m_graph_capture_record_stream_reuse{false};
   std::atomic<double> m_per_process_memory_fraction{1.0};
+
+  // UVM configuration
+  std::atomic<bool> m_use_uvm{false};
+  std::atomic<double> m_uvm_oversubscription_ratio{5.0};
+  std::atomic<UVMAccessPattern> m_uvm_access_pattern{UVMAccessPattern::GPU_FIRST};
+  std::atomic<double> m_uvm_stage1_threshold{0.10};
 };
 
 // Keep this for backwards compatibility

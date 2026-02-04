@@ -621,6 +621,9 @@ PyObject* THCPModule_memoryStats(PyObject* _unused, PyObject* arg) {
   result["requested_bytes"] = statArrayToDict(stats.requested_bytes);
   result["oversize_allocations"] = statToDict(stats.oversize_allocations);
   result["oversize_segments"] = statToDict(stats.oversize_segments);
+  result["uvm_stage"] = stats.uvm_stage;
+  result["uvm_light_reclamations"] = stats.uvm_light_reclamations;
+  result["uvm_hard_reclamations"] = stats.uvm_hard_reclamations;
 
   return result.release().ptr();
   END_HANDLE_TH_ERRORS

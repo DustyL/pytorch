@@ -1042,12 +1042,42 @@ PrivatePoolState::PrivatePoolState(
   }
 }
 
+// UVM allocation wrapper that uses cudaMallocManaged when UVM is enabled
+cudaError_t cudaMallocMaybeUsingUvm(void** p, size_t size, int device) {
+  if (CUDAAllocatorConfig::use_uvm()) {
+    cudaError_t err = cudaMallocManaged(p, size);
+    if (err == cudaSuccess) {
+      // Apply memory hints based on access pattern
+      switch (CUDAAllocatorConfig::uvm_access_pattern()) {
+        case UVMAccessPattern::GPU_FIRST:
+          // Prefer GPU memory, prefetch to GPU
+          cudaMemAdvise(*p, size, cudaMemAdviseSetPreferredLocation, device);
+          cudaMemAdvise(*p, size, cudaMemAdviseSetAccessedBy, device);
+          cudaMemPrefetchAsync(*p, size, device);
+          break;
+        case UVMAccessPattern::BALANCED:
+          // Let driver decide placement
+          cudaMemAdvise(*p, size, cudaMemAdviseSetAccessedBy, device);
+          break;
+        case UVMAccessPattern::CPU_FIRST:
+          // Prefer CPU memory, migrate to GPU on access
+          cudaMemAdvise(*p, size, cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
+          cudaMemAdvise(*p, size, cudaMemAdviseSetAccessedBy, device);
+          break;
+      }
+    }
+    return err;
+  } else {
+    return cudaMalloc(p, size);
+  }
+}
+
 cudaError_t allocPrimitive(void** ptr, size_t size, AllocParams& p) {
   if (p.pool->owner_PrivatePool && p.pool->owner_PrivatePool->allocator()) {
     *ptr = p.pool->owner_PrivatePool->allocator()->raw_alloc(size);
     return *ptr ? cudaSuccess : cudaErrorMemoryAllocation;
   } else {
-    return C10_CUDA_ERROR_HANDLED(cudaMalloc(ptr, size));
+    return C10_CUDA_ERROR_HANDLED(cudaMallocMaybeUsingUvm(ptr, size, p.device()));
   }
 }
 
@@ -1454,6 +1484,37 @@ class DeviceCachingAllocator {
               AcceleratorAllocatorConfig::garbage_collection_threshold() >
                   0.0)) {
         garbage_collect_cached_blocks(context);
+      }
+
+      // Proactive UVM memory management: when UVM is enabled, cudaMallocManaged
+      // never fails (it uses system RAM as fallback), so we must proactively
+      // reclaim memory to avoid unbounded memory growth.
+      if (CUDAAllocatorConfig::use_uvm()) {
+        size_t device_free = 0;
+        size_t device_total = 0;
+        C10_CUDA_CHECK(cudaMemGetInfo(&device_free, &device_total));
+
+        auto reserved_bytes =
+            stats.reserved_bytes[static_cast<size_t>(StatType::AGGREGATE)]
+                .current;
+        auto allocated_bytes =
+            stats.allocated_bytes[static_cast<size_t>(StatType::AGGREGATE)]
+                .current;
+
+        // Stage 1 (HBM Territory): Light reclamation when free memory is low
+        double threshold = device_total * CUDAAllocatorConfig::uvm_stage1_threshold();
+        if (device_free < threshold) {
+          release_available_cached_blocks(params, context);
+        }
+
+        // Stage 2 (UVM Territory): When oversubscribed, enforce ratio limit
+        double max_allowed = device_total * CUDAAllocatorConfig::uvm_oversubscription_ratio();
+        if (reserved_bytes > static_cast<int64_t>(device_total) &&
+            reserved_bytes > allocated_bytes * 1.5 &&
+            reserved_bytes > max_allowed &&
+            C10_LIKELY(captures_underway.empty())) {
+          release_cached_blocks(context, {0, 0});
+        }
       }
 
       // Attempt allocate
@@ -3835,7 +3896,9 @@ static void* uncached_allocate(size_t size) {
   void* devPtr = nullptr;
   // Deliberately don't use cudaMallocMaybeCapturing here, to force an error
   // if someone tries to use forceUncachedAllocator while capturing.
-  C10_CUDA_CHECK(cudaMalloc(&devPtr, size));
+  int device = 0;
+  C10_CUDA_CHECK(c10::cuda::GetDevice(&device));
+  C10_CUDA_CHECK(cudaMallocMaybeUsingUvm(&devPtr, size, device));
   const c10::impl::PyInterpreter* interp = c10::impl::GPUTrace::get_trace();
   if (C10_UNLIKELY(interp)) {
     (*interp)->trace_gpu_memory_allocation(

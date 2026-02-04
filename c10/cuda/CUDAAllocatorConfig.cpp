@@ -109,6 +109,18 @@ void CUDAAllocatorConfig::parseArgs(const std::string& env) {
     } else if (key == "per_process_memory_fraction") {
       i = parsePerProcessMemoryFraction(tokenizer, i);
       used_native_specific_option = true;
+    } else if (key == "use_uvm") {
+      i = parseUseUvm(tokenizer, i);
+      used_native_specific_option = true;
+    } else if (key == "uvm_oversubscription_ratio") {
+      i = parseUvmOversubscriptionRatio(tokenizer, i);
+      used_native_specific_option = true;
+    } else if (key == "uvm_access_pattern") {
+      i = parseUvmAccessPattern(tokenizer, i);
+      used_native_specific_option = true;
+    } else if (key == "uvm_stage1_threshold") {
+      i = parseUvmStage1Threshold(tokenizer, i);
+      used_native_specific_option = true;
     } else {
       const auto& keys =
           c10::CachingAllocator::AcceleratorAllocatorConfig::getKeys();
@@ -189,6 +201,61 @@ size_t CUDAAllocatorConfig::parsePinnedReserveSegmentSize(
   TORCH_CHECK_VALUE(
       val2 > 0, "Pinned reserve segment size has to be greater than 0");
   m_pinned_reserve_segment_size_mb = val2;
+  return i;
+}
+
+size_t CUDAAllocatorConfig::parseUseUvm(
+    const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+    size_t i) {
+  tokenizer.checkToken(++i, ":");
+  m_use_uvm = tokenizer.toBool(++i);
+  return i;
+}
+
+size_t CUDAAllocatorConfig::parseUvmOversubscriptionRatio(
+    const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+    size_t i) {
+  tokenizer.checkToken(++i, ":");
+  double ratio = tokenizer.toDouble(++i);
+  TORCH_CHECK_VALUE(
+      ratio > 1.0,
+      "uvm_oversubscription_ratio must be greater than 1.0, got ",
+      ratio);
+  m_uvm_oversubscription_ratio = ratio;
+  return i;
+}
+
+size_t CUDAAllocatorConfig::parseUvmAccessPattern(
+    const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+    size_t i) {
+  tokenizer.checkToken(++i, ":");
+  const auto& pattern = tokenizer[++i];
+  if (pattern == "gpu_first") {
+    m_uvm_access_pattern = UVMAccessPattern::GPU_FIRST;
+  } else if (pattern == "balanced") {
+    m_uvm_access_pattern = UVMAccessPattern::BALANCED;
+  } else if (pattern == "cpu_first") {
+    m_uvm_access_pattern = UVMAccessPattern::CPU_FIRST;
+  } else {
+    TORCH_CHECK_VALUE(
+        false,
+        "Invalid uvm_access_pattern value '",
+        pattern,
+        "'. Expected gpu_first, balanced, or cpu_first");
+  }
+  return i;
+}
+
+size_t CUDAAllocatorConfig::parseUvmStage1Threshold(
+    const c10::CachingAllocator::ConfigTokenizer& tokenizer,
+    size_t i) {
+  tokenizer.checkToken(++i, ":");
+  double threshold = tokenizer.toDouble(++i);
+  TORCH_CHECK_VALUE(
+      threshold > 0.0 && threshold < 1.0,
+      "uvm_stage1_threshold must be in (0.0, 1.0), got ",
+      threshold);
+  m_uvm_stage1_threshold = threshold;
   return i;
 }
 

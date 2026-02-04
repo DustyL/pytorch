@@ -58,6 +58,14 @@ struct DeviceStats {
 
   // SIZE: maximum block size that is allowed to be split.
   int64_t max_split_size = 0;
+
+  // UVM (Unified Virtual Memory) stats
+  // Current UVM stage: 1 = within GPU memory, 2 = oversubscribed
+  int64_t uvm_stage = 1;
+  // COUNT: number of light reclamations (release_available_cached_blocks)
+  int64_t uvm_light_reclamations = 0;
+  // COUNT: number of hard reclamations (release_cached_blocks)
+  int64_t uvm_hard_reclamations = 0;
 };
 
 using CreateContextFn = std::shared_ptr<GatheredContext> (*)();

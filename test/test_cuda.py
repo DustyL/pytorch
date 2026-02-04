@@ -116,6 +116,9 @@ skipIfNoTorchVision = unittest.skipIf(not HAS_TORCHVISION, "no torchvision")
 TEST_CUDAMALLOCASYNC = TEST_CUDA and (
     torch.cuda.get_allocator_backend() == "cudaMallocAsync"
 )
+TEST_CUDA_UVM = TEST_CUDA and (
+    "use_uvm:True" in os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "")
+)
 TEST_LARGE_TENSOR = TEST_CUDA
 TEST_MEDIUM_TENSOR = TEST_CUDA
 TEST_BF16 = False
@@ -432,9 +435,24 @@ print(t.is_pinned())
         tensor.fill_(1)
         self.assertTrue((tensor == 1).all())
 
+    @unittest.skipIf(not TEST_CUDA_UVM, "UVM over-subscription test requires UVM enabled")
+    @serialTest()
+    def test_uvm_over_subscription(self):
+        """Test that UVM allows memory over-subscription beyond GPU VRAM."""
+        torch.cuda.empty_cache()
+        total_memory = torch.cuda.get_device_properties(0).total_memory
+        # Allocate 1.5x GPU memory - only possible with UVM
+        size = int(total_memory * 1.5)
+        a = torch.empty(size, dtype=torch.int8, device="cuda")
+        self.assertEqual(a.numel() * a.element_size(), size)
+        del a
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+
     @unittest.skipIf(
         TEST_CUDAMALLOCASYNC or IS_JETSON, "Segmentation fault (core dumped)"
     )
+    @unittest.skipIf(TEST_CUDA_UVM, "UVM allows VRAM over-subscription so retry behavior differs")
     @serialTest()
     def test_out_of_memory_retry(self):
         torch.cuda.empty_cache()
