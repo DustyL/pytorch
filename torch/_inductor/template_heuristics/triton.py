@@ -34,6 +34,8 @@ from ..utils import (
     get_tma_workspace_arg,
     TMA_DESCRIPTOR_SIZE,
     using_b200,
+    using_b300,
+    using_blackwell,
 )
 from ..virtualized import V
 from .gemm import GemmMaxAutotuneTemplateConfigHeuristics
@@ -2378,9 +2380,9 @@ class ScaledMMConfigMixin(BaseScaledMMConfigMixin):
             # Triton crashes however uncommon for real workloads
             return False
 
-        # On NVIDIA B200 GPUs, K dim must be >= 32 for tcgen05.mma.kind::f8f6f4.* PTX instruction to be valid
+        # On Blackwell GPUs (SM 10.x), K dim must be >= 32 for tcgen05.mma.kind::f8f6f4.* PTX instruction
         # source: https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-matrix-shape
-        if using_b200() and V.graph.sizevars.guard_or_false(sympy.Lt(k, 32)):
+        if using_blackwell() and V.graph.sizevars.guard_or_false(sympy.Lt(k, 32)):
             return False
         return True
 
