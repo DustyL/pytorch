@@ -1741,10 +1741,27 @@ def get_max_num_sms() -> int:
 
 @functools.lru_cache
 def using_b200() -> bool:
-    """Returns true if the device is a NVIDIA B200, otherwise returns false."""
+    """Returns true if the device is a NVIDIA B200 (SM 10.0), otherwise returns false."""
     if not torch.cuda.is_available():
         return False
-    # compute capability 10.0 or 10.0a is NVIDIA B200
+    device_properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+    return device_properties.major == 10 and device_properties.minor == 0
+
+
+@functools.lru_cache
+def using_b300() -> bool:
+    """Returns true if the device is a NVIDIA B300 (SM 10.3), otherwise returns false."""
+    if not torch.cuda.is_available():
+        return False
+    device_properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+    return device_properties.major == 10 and device_properties.minor == 3
+
+
+@functools.lru_cache
+def using_blackwell() -> bool:
+    """Returns true if the device is any Blackwell GPU (SM 10.x), otherwise returns false."""
+    if not torch.cuda.is_available():
+        return False
     device_properties = torch.cuda.get_device_properties(torch.cuda.current_device())
     return device_properties.major == 10
 
